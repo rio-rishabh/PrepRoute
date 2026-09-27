@@ -2,9 +2,9 @@
 name: PrepRoute Jev CLI
 overview: Build a Java CLI that classifies an unstructured interview problem via the Jev wire protocol (choice/score/noul), then maps high-confidence answers to a concrete file path in this repo—using an in-process fake backend so it runs without a TypeSafe key.
 todos:
-  - id: maven-skeleton
-    content: Create PrepRoute/ Maven module (Java 17, Jackson, exec plugin) + package layout
-    status: in_progress
+  - id: gradle-skeleton
+    content: Create PrepRoute/ Gradle project (Java 17, Jackson, application plugin, wrapper) + package layout
+    status: pending
   - id: jev-types
     content: Add Question/JevRequest/JevResponse records and the three triage questions
     status: pending
@@ -33,7 +33,7 @@ isProject: false
 A runnable Java CLI under [`PrepRoute/`](PrepRoute/):
 
 ```bash
-cd PrepRoute && ./mvnw -q exec:java -Dexec.args="Given an array and k, return the k most frequent..."
+cd PrepRoute && ./gradlew run --args="Given an array and k, return the k most frequent..."
 ```
 
 Prints a routed file path (or escalates on low confidence). Backend is swappable via env: fake (default) → local Laya → TypeSafe/OpenRouter later.
@@ -54,17 +54,19 @@ flowchart LR
 ```
 
 Decision defaults (locked for this build):
-- **Build:** small Maven module (repo has no `pom.xml` today; plain `.class` files won't scale for HTTP + JSON).
+- **Build:** small Gradle project with wrapper (`gradlew` / `build.gradle.kts`); plain `.class` files won't scale for HTTP + JSON.
 - **Java 17+**, JDK `HttpClient`, Jackson for request/response records.
-- **No Spring** — keep the learning surface on System One, not the framework.
+- **No Spring** — keep the learning surface on System One, not the framework (OpenAPI/Redis come in a later phase).
 - **Phase 1 backend:** in-process `FakeJevBackend` that returns deterministic answers from keyword heuristics (e.g. "k most frequent" → `heap`). Same `JevRequest`/`JevResponse` types as a real call.
 - **Phase 1 UX:** CLI only (no UI).
 
 ## What to build
 
-### 1. Maven skeleton — [`PrepRoute/`](PrepRoute/)
+### 1. Gradle skeleton — [`PrepRoute/`](PrepRoute/)
 
-- `pom.xml`: Java 17, Jackson, Maven exec plugin
+- `settings.gradle.kts`, `build.gradle.kts`: Java 17 toolchain, Jackson, JUnit 5
+- Application plugin with `mainClass = "prep.route.PrepRouteMain"`
+- Gradle Wrapper (`./gradlew`) so no global Gradle install is required
 - Package: `prep.route`
 - README: how to run, env vars, example paste
 
@@ -121,21 +123,22 @@ Static map (seeded from this repo):
 - Unit test FakeJevBackend: Top-K text → `heap`, high amazon noul
 - Unit test FolderRouter: high confidence → path; low confidence → escalate
 - Optional: client serialization smoke test (Jackson round-trip)
+- Run with: `./gradlew test`
 
 ### 7. Docs
 
-Short README section: problem statement, how to run fake, how to point at `laya-serve` later (`JEV_BASE_URL=http://localhost:8000`), how to swap to TypeSafe when waitlist clears.
+Short README section: problem statement, how to run fake (`./gradlew run --args="..."`), how to point at `laya-serve` later (`JEV_BASE_URL=http://localhost:8000`), how to swap to TypeSafe when waitlist clears.
 
 ## Out of scope (later)
 
 - Scanning all `.java` files for smarter nearest-neighbor matching
-- Spring Boot / web UI
+- Spring Boot / OpenAPI / Redis (Phase B of the learning plan)
 - Fine-tuning Laya
 - Live TypeSafe calls (config ready only)
 
 ## Implementation order
 
-1. Maven + records + FakeJevBackend
+1. Gradle wrapper + records + FakeJevBackend
 2. FolderRouter + CLI print path
 3. HTTP JevClient behind env switch
 4. Tests + README
