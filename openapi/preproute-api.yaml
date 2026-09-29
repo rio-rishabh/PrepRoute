@@ -1,0 +1,195 @@
+openapi: 3.1.0
+info:
+  title: PrepRoute API
+  version: 0.1.0
+  summary: Interview problem triage via System One decisions
+  description: |
+    Routes an unstructured interview problem description to a concrete
+    practice file (pattern, Amazon-style fit, interview pressure).
+
+    Decisions use the Jev wire shape (`choice` / `score` / `noul`).
+    Phase 1: sync triage. Later: Redis cache, then Kafka async.
+
+    **Add your paths under `paths:` — schemas below are ready to `$ref`.**
+  contact:
+    name: PrepRoute
+  license:
+    name: Apache-2.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://api.example.com
+    description: Production (placeholder)
+
+tags:
+  - name: triage
+    description: Classify a problem and map it to a repo file path
+  - name: health
+    description: Liveness / readiness
+
+# ---------------------------------------------------------------------------
+# Endpoints — add operations here
+# ---------------------------------------------------------------------------
+paths: {}
+
+# Example (uncomment / replace when you implement):
+#
+# paths:
+#   /v1/triage:
+#     post:
+#       tags: [triage]
+#       operationId: triageProblem
+#       summary: Route an interview problem
+#       requestBody:
+#         required: true
+#         content:
+#           application/json:
+#             schema:
+#               $ref: '#/components/schemas/TriageRequest'
+#       responses:
+#         '200':
+#           description: Route result
+#           content:
+#             application/json:
+#               schema:
+#                 $ref: '#/components/schemas/TriageResponse'
+#         '400':
+#           $ref: '#/components/responses/BadRequest'
+#   /healthz:
+#     get:
+#       tags: [health]
+#       operationId: healthz
+#       summary: Liveness probe
+#       responses:
+#         '200':
+#           description: OK
+
+components:
+  schemas:
+    TriageRequest:
+      type: object
+      required:
+        - problemText
+      properties:
+        problemText:
+          type: string
+          minLength: 1
+          description: Unstructured interview / LeetCode-style problem text
+          example: >
+            Given an array of integers and an integer k, return the k most
+            frequent elements. You must solve it in better than O(n log n).
+        sync:
+          type: boolean
+          default: true
+          description: If false, reserved for future async (Kafka) flow
+
+    Pattern:
+      type: string
+      description: Algorithmic pattern aligned to repo folders
+      enum:
+        - sliding_window
+        - two_pointers
+        - heap
+        - graph
+        - bfs_dfs
+        - binary_search
+        - tree
+        - intervals
+        - linked_list
+        - other
+
+    TriageResponse:
+      type: object
+      required:
+        - pattern
+        - confidence
+        - amazonStyle
+        - interviewPressure
+        - escalated
+        - cacheHit
+      properties:
+        pattern:
+          $ref: '#/components/schemas/Pattern'
+        confidence:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: Confidence for the chosen pattern (choice)
+        amazonStyle:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: Noul probability that the problem is Amazon-style
+        interviewPressure:
+          type: number
+          format: double
+          description: Score on warmup / standard / brutal rubric (0–2)
+        openNext:
+          type:
+            - string
+            - 'null'
+          description: Primary file path to open; null when escalated
+          example: CompanyPrep/Amazon/TopKFrequentElements.java
+        related:
+          type: array
+          items:
+            type: string
+          description: Related drill paths (e.g. pattern-folder twin)
+        escalated:
+          type: boolean
+          description: True when confidence is too low to auto-route
+        candidates:
+          type: array
+          items:
+            type: string
+          description: Suggested paths when escalated
+        cacheHit:
+          type: boolean
+          description: True when served from Redis (Phase B); false for now
+        model:
+          type: string
+          description: Backend model id (fake / laya / jev-latest)
+          example: fake
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          example: bad_request
+        message:
+          type: string
+          example: problemText must not be blank
+
+  responses:
+    BadRequest:
+      description: Invalid request body
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+      description: Optional; used when pointing at Laya/TypeSafe later
