@@ -8,9 +8,7 @@ info:
     practice file (pattern, Amazon-style fit, interview pressure).
 
     Decisions use the Jev wire shape (`choice` / `score` / `noul`).
-    Phase 1: sync triage. Later: Redis cache, then Kafka async.
-
-    **Add your paths under `paths:` — schemas below are ready to `$ref`.**
+    Phase 1: sync triage + health. Later: Redis cache, then Kafka async.
   contact:
     name: PrepRoute
   license:
@@ -28,42 +26,84 @@ tags:
   - name: health
     description: Liveness / readiness
 
-# ---------------------------------------------------------------------------
-# Endpoints — add operations here
-# ---------------------------------------------------------------------------
-paths: {}
+paths:
+  /v1/triage:
+    post:
+      tags: [triage]
+      operationId: triageProblem
+      summary: Route an interview problem
+      description: |
+        Evaluate `problemText` with System One questions, then map
+        high-confidence answers to a practice file. Low confidence escalates
+        (no auto-route).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TriageRequest'
+            examples:
+              topKFrequent:
+                summary: Top-K frequent elements
+                value:
+                  problemText: >
+                    Given an array of integers and an integer k, return the k most
+                    frequent elements. You must solve it in better than O(n log n).
+                  sync: true
+      responses:
+        '200':
+          description: Route result (or escalated candidates)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TriageResponse'
+              examples:
+                routed:
+                  summary: High-confidence Amazon heap route
+                  value:
+                    pattern: heap
+                    confidence: 0.91
+                    amazonStyle: 0.88
+                    interviewPressure: 1.4
+                    openNext: CompanyPrep/Amazon/TopKFrequentElements.java
+                    related:
+                      - Heap/TopKFrequentElement.java
+                    escalated: false
+                    candidates: []
+                    cacheHit: false
+                    model: fake
+                escalated:
+                  summary: Low confidence — do not auto-route
+                  value:
+                    pattern: binary_search
+                    confidence: 0.48
+                    amazonStyle: 0.40
+                    interviewPressure: 1.0
+                    openNext: null
+                    related: []
+                    escalated: true
+                    candidates:
+                      - BinarySearch/SearchInRotatedSortedArray.java
+                      - BinarySearch/MinimumInRotatedSortedArray.java
+                    cacheHit: false
+                    model: fake
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
-# Example (uncomment / replace when you implement):
-#
-# paths:
-#   /v1/triage:
-#     post:
-#       tags: [triage]
-#       operationId: triageProblem
-#       summary: Route an interview problem
-#       requestBody:
-#         required: true
-#         content:
-#           application/json:
-#             schema:
-#               $ref: '#/components/schemas/TriageRequest'
-#       responses:
-#         '200':
-#           description: Route result
-#           content:
-#             application/json:
-#               schema:
-#                 $ref: '#/components/schemas/TriageResponse'
-#         '400':
-#           $ref: '#/components/responses/BadRequest'
-#   /healthz:
-#     get:
-#       tags: [health]
-#       operationId: healthz
-#       summary: Liveness probe
-#       responses:
-#         '200':
-#           description: OK
+  /healthz:
+    get:
+      tags: [health]
+      operationId: healthz
+      summary: Liveness probe
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
 
 components:
   schemas:
@@ -126,6 +166,8 @@ components:
         interviewPressure:
           type: number
           format: double
+          minimum: 0
+          maximum: 2
           description: Score on warmup / standard / brutal rubric (0–2)
         openNext:
           type:
@@ -153,6 +195,16 @@ components:
           type: string
           description: Backend model id (fake / laya / jev-latest)
           example: fake
+
+    HealthStatus:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [ok]
+          example: ok
 
     Error:
       type: object
