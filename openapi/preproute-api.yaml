@@ -1,14 +1,16 @@
 openapi: 3.1.0
 info:
   title: PrepRoute API
-  version: 0.1.0
+  version: 0.2.0
   summary: Interview problem triage via System One decisions
   description: |
     Routes an unstructured interview problem description to a concrete
     practice file (pattern, Amazon-style fit, interview pressure).
 
     Decisions use the Jev wire shape (`choice` / `score` / `noul`).
-    Phase 1: sync triage + health. Later: Redis cache, then Kafka async.
+
+    - **Phase 1:** sync `POST /v1/triage` + `/healthz`
+    - **Phase B:** Redis `cacheHit`; async via `sync: false` → `202` + `GET /v1/triage/{requestId}`
   contact:
     name: PrepRoute
   license:
@@ -36,6 +38,12 @@ paths:
         Evaluate `problemText` with System One questions, then map
         high-confidence answers to a practice file. Low confidence escalates
         (no auto-route).
+
+        - `sync: true` (default) → `200` with `TriageResponse`
+        - `sync: false` → `202` with `TriageAccepted`; poll `GET /v1/triage/{requestId}`
+      security:
+        - {}
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -44,15 +52,20 @@ paths:
               $ref: '#/components/schemas/TriageRequest'
             examples:
               topKFrequent:
-                summary: Top-K frequent elements
+                summary: Top-K frequent elements (sync)
                 value:
                   problemText: >
                     Given an array of integers and an integer k, return the k most
                     frequent elements. You must solve it in better than O(n log n).
                   sync: true
+              asyncSubmit:
+                summary: Async submit (Kafka later)
+                value:
+                  problemText: Find something in a sorted rotated array somehow?
+                  sync: false
       responses:
         '200':
-          description: Route result (or escalated candidates)
+          description: Sync route result (or escalated candidates)
           content:
             application/json:
               schema:
@@ -61,6 +74,7 @@ paths:
                 routed:
                   summary: High-confidence Amazon heap route
                   value:
+                    requestId: 01932f3e-8c2a-7b1d-9e4f-1a2b3c4d5e6f
                     pattern: heap
                     confidence: 0.91
                     amazonStyle: 0.88
@@ -75,6 +89,7 @@ paths:
                 escalated:
                   summary: Low confidence — do not auto-route
                   value:
+                    requestId: 01932f3e-8c2a-7b1d-9e4f-abcdef012345
                     pattern: binary_search
                     confidence: 0.48
                     amazonStyle: 0.40
@@ -87,8 +102,71 @@ paths:
                       - BinarySearch/MinimumInRotatedSortedArray.java
                     cacheHit: false
                     model: fake
+                cacheHit:
+                  summary: Served from Redis (Phase B)
+                  value:
+                    requestId: 01932f3e-8c2a-7b1d-9e4f-cached000001
+                    pattern: heap
+                    confidence: 0.91
+                    amazonStyle: 0.88
+                    interviewPressure: 1.4
+                    openNext: CompanyPrep/Amazon/TopKFrequentElements.java
+                    related:
+                      - Heap/TopKFrequentElement.java
+                    escalated: false
+                    candidates: []
+                    cacheHit: true
+                    model: fake
+        '202':
+          description: Accepted for async processing; poll by requestId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TriageAccepted'
+              example:
+                requestId: 01932f3e-8c2a-7b1d-9e4f-async0000001
+                status: accepted
+                pollUrl: /v1/triage/01932f3e-8c2a-7b1d-9e4f-async0000001
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/triage/{requestId}:
+    get:
+      tags: [triage]
+      operationId: getTriageResult
+      summary: Get triage result by request id
+      description: |
+        Poll async jobs (`sync: false`) or re-fetch a prior result.
+        Returns `404` if unknown, `202`-equivalent pending via `status: pending`.
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Triage completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TriageResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Still processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TriagePending'
+              example:
+                requestId: 01932f3e-8c2a-7b1d-9e4f-async0000001
+                status: pending
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -106,6 +184,17 @@ paths:
                 $ref: '#/components/schemas/HealthStatus'
 
 components:
+  parameters:
+    RequestId:
+      name: requestId
+      in: path
+      required: true
+      description: Opaque id returned from POST /v1/triage
+      schema:
+        type: string
+        format: uuid
+      example: 01932f3e-8c2a-7b1d-9e4f-1a2b3c4d5e6f
+
   schemas:
     TriageRequest:
       type: object
@@ -122,7 +211,9 @@ components:
         sync:
           type: boolean
           default: true
-          description: If false, reserved for future async (Kafka) flow
+          description: |
+            `true` = wait for result (200).
+            `false` = enqueue (202) and poll GET /v1/triage/{requestId} (Kafka later).
 
     Pattern:
       type: string
@@ -142,6 +233,7 @@ components:
     TriageResponse:
       type: object
       required:
+        - requestId
         - pattern
         - confidence
         - amazonStyle
@@ -149,6 +241,10 @@ components:
         - escalated
         - cacheHit
       properties:
+        requestId:
+          type: string
+          format: uuid
+          description: Id for this evaluation (cache key / poll handle)
         pattern:
           $ref: '#/components/schemas/Pattern'
         confidence:
@@ -190,11 +286,42 @@ components:
           description: Suggested paths when escalated
         cacheHit:
           type: boolean
-          description: True when served from Redis (Phase B); false for now
+          description: True when served from Redis (Phase B)
         model:
           type: string
           description: Backend model id (fake / laya / jev-latest)
           example: fake
+
+    TriageAccepted:
+      type: object
+      required:
+        - requestId
+        - status
+        - pollUrl
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [accepted]
+        pollUrl:
+          type: string
+          description: Relative path to poll for the result
+          example: /v1/triage/01932f3e-8c2a-7b1d-9e4f-async0000001
+
+    TriagePending:
+      type: object
+      required:
+        - requestId
+        - status
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending]
 
     HealthStatus:
       type: object
@@ -226,8 +353,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid bearer token (when auth is enabled)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     NotFound:
-      description: Resource not found
+      description: Unknown requestId
       content:
         application/json:
           schema:
