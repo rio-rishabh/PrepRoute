@@ -3,7 +3,7 @@ info:
   title: Question API
   version: 0.1.0
   description: |
-    Request/ reponse shape for OpenRouter POST /api/v1/systemConversation
+    Request/ reponse shape for OpenRouter POST /api/v1/systemone
     (Typesafe compatible). Used to generate Java DTOs for PrepRoute's JevClient.
   
 paths: {}
@@ -12,127 +12,110 @@ components:
   schemas:
     Question:
       type: object
-      required: [type, instrcutions]
+      required: [type, instructions]
       properties:
         type:
           type: string
           enum: [choice, noul, score]
         instructions:
           type: string
-        criteria:
-          description: |
-            choice/noul -> object map of label -> description.
-            score -> ordered array of level labels.
-          oneOf:
-            - type: object
-              additionalProperties:
-                type: string
-            - type: array
-              items:
-                type: string
+        criteria: {}
 
-  jevRequest:
-    type: object
-    required: [model, state, questions]
-    properties:
-      model:
-        type: string
-        example: typesafe/jev-1.13
-      state:
-        description: Plain string or JSON object/array of context.
-        oneOf:
-          - type: string
-          - type: object
-            additionalProperties: true
-          - type: array
-            items: {}
-      questions:
-        type: object
-        additionalProperties:
-          $ref: '#/components/schemas/Question'
-
-  NoulAnswer:
-    type: object
-    required: [type, noul]
-    properties:
-      type:
-        type: string
-        const: noul
-      noul:
-        type: number
-        minimum: 0
-        maximum: 1
-
-  ChoiceAnswer:
-    type: object
-    required: [type, choice, confidence]
-    properties:
-      type:
-        type: string
-        const: choice
-      choice:
-        type: string
-      confidence:
-        type: number
-      probabilities:
-        type: object
-        additionalProperties:
-          type: number
-
-  ScoreAnswer:
-    type: object
-    required: [type, score, confidence]
-    properites:
-      type:
-        type: string
-        const: score
-      score:
-        type: number
-      confidence:
-        type: number
-      legend:
-        type: object
-        additionalProperties:
+    JevRequest:
+      type: object
+      required: [model, state, questions]
+      properties:
+        model:
           type: string
-      probabilities:
-        type: object
-        additionalProperties:
+          example: typesafe/jev-1.13
+        state: {}
+        questions:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Question'
+
+    NoulAnswer:
+      type: object
+      required: [type, noul]
+      properties:
+        type:
+          type: string
+          enum: [noul]
+        noul:
           type: number
+          minimum: 0
+          maximum: 1
 
-
-  Answer:
-    oneOf:
-      - $ref: '#/components/schemas/NoulAnswer'
-      - $ref: '#/components/schemas/ChoiceAnswer'
-      - $ref: '#/components/schemas/ScoreAnswer'
-    descriminator:
-      propertyName: type
-      mapping:
-        noul: '#/components/schemas/NoulAnswer'
-        choice: '#/components/schemas/ChoiceAnswer'
-        score: '#/components/schemas/ScoreAnswer'
-  
-  JevResponse:
-    type: object
-    required: [model, answers]
-    properties:
-      id:
-        type: string
-      model:
-        type: string
-      provider:
-        type: string
-      answers:
-        type: object
-        additionalProperties:
-          $ref: '#/components/schemas/Answer'
-      usage:
-        type: object
-        properties:
-          input_tokens:
-            type: integer
-          output_tokens:
-            type: integer
-          cost:
+    ChoiceAnswer:
+      type: object
+      required: [type, choice, confidence]
+      properties:
+        type:
+          type: string
+          enum: [choice]
+        choice:
+          type: string
+        confidence:
+          type: number
+        probabilities:
+          type: object
+          additionalProperties:
             type: number
+
+    ScoreAnswer:
+      type: object
+      required: [type, score, confidence]
+      properties:
+        type:
+          type: string
+          enum: [score]
+        score:
+          type: number
+        confidence:
+          type: number
+        legend:
+          type: object
+          additionalProperties:
+            type: string
+        probabilities:
+          type: object
+          additionalProperties:
+            type: number
+
+
+    Answer:
+      oneOf:
+        - $ref: '#/components/schemas/NoulAnswer'
+        - $ref: '#/components/schemas/ChoiceAnswer'
+        - $ref: '#/components/schemas/ScoreAnswer'
+      discriminator:
+        propertyName: type
+        mapping:
+          noul: '#/components/schemas/NoulAnswer'
+          choice: '#/components/schemas/ChoiceAnswer'
+          score: '#/components/schemas/ScoreAnswer'
+    
+    JevResponse:
+      type: object
+      required: [model, answers]
+      properties:
+        id:
+          type: string
+        model:
+          type: string
+        provider:
+          type: string
+        answers:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Answer'
+        usage:
+          type: object
+          properties:
+            input_tokens:
+              type: integer
+            output_tokens:
+              type: integer
+            cost:
+              type: number
           
