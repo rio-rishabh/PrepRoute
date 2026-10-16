@@ -22,5 +22,11 @@ public class Questions {
             Map.entry("depth_first_search", "search the tree depth by depth."),
             ))
         );
+
+        questions.put("is_Amazon_Style", Questions.noul(
+            "Does this read and feel like amazon style problem? (OA/ On site classic)",
+            "Classic Amazon OA/onsite flavor (frequency, top-K, design-adjacent coding).",
+            "Generic LeetCode-style or company-agnostic wording."
+        ));
     }
 }
